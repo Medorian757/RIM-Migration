@@ -1,0 +1,110 @@
+{
+  "name": "InventoryItem",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Item name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Item description"
+    },
+    "sku": {
+      "type": "string",
+      "description": "Stock keeping unit / barcode"
+    },
+    "category_id": {
+      "type": "string",
+      "description": "Category this item belongs to"
+    },
+    "case_quantity": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of cases/bags in stock"
+    },
+    "case_unit": {
+      "type": "string",
+      "enum": [
+        "cases",
+        "bags",
+        "boxes",
+        "cartons",
+        "pallets",
+        "crates",
+        "packs",
+        "bundles",
+        "drums",
+        "totes"
+      ],
+      "default": "cases",
+      "description": "Type of container unit"
+    },
+    "units_per_case": {
+      "type": "number",
+      "default": 1,
+      "description": "Individual units per case/bag"
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "pieces",
+        "each",
+        "kg",
+        "g",
+        "lbs",
+        "oz",
+        "liters",
+        "ml",
+        "gallons",
+        "cups",
+        "meters",
+        "feet"
+      ],
+      "default": "pieces",
+      "description": "Unit of measure for individual units"
+    },
+    "min_cases": {
+      "type": "number",
+      "default": 0,
+      "description": "Minimum case count for low stock alerts"
+    },
+    "max_cases": {
+      "type": "number",
+      "default": 0,
+      "description": "Maximum case count (capacity limit)"
+    },
+    "unit_cost": {
+      "type": "number",
+      "default": 0,
+      "description": "Cost per individual unit"
+    },
+    "sale_price": {
+      "type": "number",
+      "default": 0,
+      "description": "Selling price per individual unit"
+    },
+    "location": {
+      "type": "string",
+      "description": "Storage location"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Item image URL"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for filtering"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

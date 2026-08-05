@@ -1,0 +1,48 @@
+{
+  "name": "ChangeHistory",
+  "type": "object",
+  "properties": {
+    "item_id": {
+      "type": "string",
+      "description": "ID of the inventory item"
+    },
+    "item_name": {
+      "type": "string",
+      "description": "Name of the inventory item at time of change"
+    },
+    "changes": {
+      "type": "array",
+      "description": "List of field changes",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "old_value": {
+            "type": "string"
+          },
+          "new_value": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "changed_by": {
+      "type": "string",
+      "description": "Email of the user who made the change"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "created",
+        "updated"
+      ],
+      "description": "Type of action performed"
+    }
+  },
+  "required": [
+    "item_id",
+    "action"
+  ]
+}
