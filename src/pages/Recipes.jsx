@@ -73,42 +73,102 @@ export default function Recipes() {
     );
   });
   
-  // Calculate stats
-  const totalRecipes = recipes.length;
-  const avgProfitMargin = recipes.length > 0 
-    ? recipes.reduce((sum, recipe) => {
-        const ingredientCost = (recipe.ingredients || []).reduce((sum, ing) => {
-          const item = items.find(i => i.id === ing.item_id);
-          return sum + ((item?.unit_cost || 0) * (ing.quantity || 0));
-        }, 0);
-        const totalCost = ingredientCost + (recipe.labor_cost || 0) + (recipe.overhead_cost || 0);
-        const costPerUnit = recipe.yield_quantity > 0 ? totalCost / recipe.yield_quantity : 0;
-        const outputItem = items.find(i => i.id === recipe.output_item_id);
-        const sellingPrice = recipe.selling_price !== undefined && recipe.selling_price !== null 
-          ? recipe.selling_price 
-          : (outputItem?.sale_price || 0);
-        const profitPerUnit = sellingPrice - costPerUnit;
-        const margin = sellingPrice > 0 ? ((profitPerUnit / sellingPrice) * 100) : 0;
-        return sum + margin;
-      }, 0) / recipes.length
-    : 0;
-  
-  const highMarginRecipes = recipes.filter(recipe => {
+  // Calculate recipe-unit cost from inventory purchase costing
+  const getRecipeUnitCost = (item) => {
+    if (!item) return 0;
+
+    const purchaseCost = Number(item.purchase_cost || 0);
+    const unitsPerCase = Number(item.units_per_case || 0);
+
+    if (purchaseCost <= 0 || unitsPerCase <= 0) return Number(item.unit_cost || 0);
+
+    const normalizeUnit = (unit) => {
+      const map = {
+        gallons: "gal",
+        gallon: "gal",
+        liters: "l",
+        liter: "l",
+        cups: "cup",
+        lbs: "lb",
+        pounds: "lb",
+        pound: "lb",
+        pieces: "each",
+      };
+
+      return map[unit] || unit;
+    };
+
+    const from = normalizeUnit(item.unit);
+    const to = normalizeUnit(item.uom);
+
+    const conversions = {
+      oz: { group: "weight", factor: 1 },
+      lb: { group: "weight", factor: 16 },
+      g: { group: "weight", factor: 0.0352739619 },
+      kg: { group: "weight", factor: 35.2739619 },
+
+      "fl oz": { group: "volume", factor: 1 },
+      gal: { group: "volume", factor: 128 },
+      cup: { group: "volume", factor: 8 },
+      tbsp: { group: "volume", factor: 0.5 },
+      tsp: { group: "volume", factor: 1 / 6 },
+      ml: { group: "volume", factor: 0.0338140227 },
+      l: { group: "volume", factor: 33.8140227 },
+
+      each: { group: "count", factor: 1 },
+    };
+
+    if (!conversions[from] || !conversions[to]) return Number(item.unit_cost || 0);
+    if (conversions[from].group !== conversions[to].group) return Number(item.unit_cost || 0);
+
+    const recipeQuantity =
+      unitsPerCase *
+      conversions[from].factor /
+      conversions[to].factor;
+
+    return recipeQuantity > 0
+      ? purchaseCost / recipeQuantity
+      : Number(item.unit_cost || 0);
+  };
+
+  const getRecipeNumbers = (recipe) => {
     const ingredientCost = (recipe.ingredients || []).reduce((sum, ing) => {
       const item = items.find(i => i.id === ing.item_id);
-      return sum + ((item?.unit_cost || 0) * (ing.quantity || 0));
+      return sum + getRecipeUnitCost(item) * Number(ing.quantity || 0);
     }, 0);
-    const totalCost = ingredientCost + (recipe.labor_cost || 0) + (recipe.overhead_cost || 0);
-    const costPerUnit = recipe.yield_quantity > 0 ? totalCost / recipe.yield_quantity : 0;
-    const outputItem = items.find(i => i.id === recipe.output_item_id);
-    const sellingPrice = recipe.selling_price !== undefined && recipe.selling_price !== null 
-      ? recipe.selling_price 
-      : (outputItem?.sale_price || 0);
+
+    const laborCost = Number(recipe.labor_cost || 0);
+    const overheadCost = Number(recipe.overhead_cost || 0);
+    const totalCost = ingredientCost + laborCost + overheadCost;
+
+    const yieldQuantity = Number(recipe.yield_quantity || 0);
+    const costPerUnit = yieldQuantity > 0 ? totalCost / yieldQuantity : 0;
+
+    const sellingPrice =
+      recipe.selling_price !== undefined && recipe.selling_price !== null
+        ? Number(recipe.selling_price)
+        : 0;
+
     const profitPerUnit = sellingPrice - costPerUnit;
-    const margin = sellingPrice > 0 ? ((profitPerUnit / sellingPrice) * 100) : 0;
-    return margin >= 30;
-  }).length;
-  
+    const margin =
+      sellingPrice > 0 ? (profitPerUnit / sellingPrice) * 100 : 0;
+
+    return { ingredientCost, totalCost, costPerUnit, sellingPrice, profitPerUnit, margin };
+  };
+
+  // Calculate stats using the same Recipe UOM costing as the recipe form/card
+  const totalRecipes = recipes.length;
+
+  const avgProfitMargin =
+    recipes.length > 0
+      ? recipes.reduce((sum, recipe) => sum + getRecipeNumbers(recipe).margin, 0) /
+        recipes.length
+      : 0;
+
+  const highMarginRecipes = recipes.filter(
+    (recipe) => getRecipeNumbers(recipe).margin >= 30
+  ).length;
+
   const isLoading = recipesLoading || itemsLoading;
   
   return (

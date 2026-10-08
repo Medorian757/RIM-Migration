@@ -152,41 +152,19 @@ export default function Inventory() {
   }, [items, searchQuery, selectedCategory, stockFilter, sortBy]);
   
   // Handlers
-  const handleSaveItem = async (data) => {
-    if (editingItem) {
-      // Compute changes
-      const TRACKED = ["name","description","sku","category_id","case_quantity","case_unit","units_per_case","unit","min_cases","unit_cost","sale_price","location","notes","tags"];
-      const changes = TRACKED.reduce((acc, field) => {
-        const oldVal = String(editingItem[field] ?? "");
-        const newVal = String(data[field] ?? "");
-        if (oldVal !== newVal) acc.push({ field, old_value: oldVal, new_value: newVal });
-        return acc;
-      }, []);
-      await updateItem.mutateAsync({ id: editingItem.id, data });
-      if (changes.length > 0) {
-        const user = await base44.auth.me().catch(() => null);
-        await base44.entities.ChangeHistory.create({
-          item_id: editingItem.id,
-          item_name: data.name,
-          action: "updated",
-          changes,
-          changed_by: user?.email || ""
-        });
-      }
-    } else {
-      const created = await createItem.mutateAsync(data);
-      const user = await base44.auth.me().catch(() => null);
-      await base44.entities.ChangeHistory.create({
-        item_id: created.id,
-        item_name: data.name,
-        action: "created",
-        changes: [],
-        changed_by: user?.email || ""
-      });
-    }
-    setEditingItem(null);
-  };
-  
+const handleSaveItem = async (data) => {
+  if (editingItem) {
+    await updateItem.mutateAsync({
+      id: editingItem.id,
+      data,
+    });
+  } else {
+    await createItem.mutateAsync(data);
+  }
+
+  setEditingItem(null);
+  setItemFormOpen(false);
+};  
   const handleSaveCategory = async (data) => {
     if (editingCategory) {
       await updateCategory.mutateAsync({ id: editingCategory.id, data });

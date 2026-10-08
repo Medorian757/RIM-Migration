@@ -12,7 +12,6 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    output_item_id: "",
     yield_quantity: 1,
     selling_price: null,
     ingredients: [],
@@ -28,7 +27,6 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
       setFormData({
         name: recipe.name || "",
         description: recipe.description || "",
-        output_item_id: recipe.output_item_id || "",
         yield_quantity: recipe.yield_quantity || 1,
         selling_price: recipe.selling_price !== undefined ? recipe.selling_price : null,
         ingredients: recipe.ingredients || [],
@@ -41,8 +39,7 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
       setFormData({
         name: "",
         description: "",
-        output_item_id: "",
-        yield_quantity: 1,
+            yield_quantity: 1,
         selling_price: null,
         ingredients: [],
         labor_cost: 0,
@@ -56,7 +53,8 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    await onSave(formData);
+console.log("RECIPE DATA BEING SAVED:", formData);   
+ await onSave(formData);
     setSaving(false);
     onClose();
   };
@@ -83,21 +81,85 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
       )
     }));
   };
-  
+const getRecipeUnitCost = (item) => {
+  if (!item) return 0;
+
+  const purchaseCost = Number(item.purchase_cost || 0);
+  const unitsPerCase = Number(item.units_per_case || 0);
+
+  if (purchaseCost <= 0 || unitsPerCase <= 0) {
+    return Number(item.unit_cost || 0);
+  }
+
+  const normalizeUnit = (unit) => {
+    const map = {
+      gallons: "gal",
+      gallon: "gal",
+      liters: "l",
+      liter: "l",
+      cups: "cup",
+      lbs: "lb",
+      pounds: "lb",
+      pound: "lb",
+      pieces: "each",
+    };
+
+    return map[unit] || unit;
+  };
+
+  const from = normalizeUnit(item.unit);
+  const to = normalizeUnit(item.uom);
+
+  const conversions = {
+    oz: { group: "weight", factor: 1 },
+    lb: { group: "weight", factor: 16 },
+    g: { group: "weight", factor: 0.0352739619 },
+    kg: { group: "weight", factor: 35.2739619 },
+
+    "fl oz": { group: "volume", factor: 1 },
+    gal: { group: "volume", factor: 128 },
+    cup: { group: "volume", factor: 8 },
+    tbsp: { group: "volume", factor: 0.5 },
+    tsp: { group: "volume", factor: 1 / 6 },
+    ml: { group: "volume", factor: 0.0338140227 },
+    l: { group: "volume", factor: 33.8140227 },
+
+    each: { group: "count", factor: 1 },
+  };
+
+  if (!conversions[from] || !conversions[to]) {
+    return Number(item.unit_cost || 0);
+  }
+
+  if (conversions[from].group !== conversions[to].group) {
+    return Number(item.unit_cost || 0);
+  }
+
+  const recipeQuantity =
+    unitsPerCase *
+    conversions[from].factor /
+    conversions[to].factor;
+
+  return recipeQuantity > 0
+    ? purchaseCost / recipeQuantity
+    : Number(item.unit_cost || 0);
+};
   // Calculate costs
-  const ingredientCost = formData.ingredients.reduce((sum, ing) => {
-    const item = items.find(i => i.id === ing.item_id);
-    return sum + ((item?.unit_cost || 0) * (ing.quantity || 0));
-  }, 0);
-  
+const ingredientCost = formData.ingredients.reduce((sum, ing) => {
+  const item = items.find(i => i.id === ing.item_id);
+  const recipeUnitCost = getRecipeUnitCost(item);
+
+  return sum + (recipeUnitCost * (ing.quantity || 0));
+}, 0);  
   const totalCost = ingredientCost + (formData.labor_cost || 0) + (formData.overhead_cost || 0);
-  const costPerUnit = formData.yield_quantity > 0 ? totalCost / formData.yield_quantity : 0;
   
-  const outputItem = items.find(i => i.id === formData.output_item_id);
-  const sellingPrice = formData.selling_price !== null && formData.selling_price !== undefined
-    ? formData.selling_price
-    : (outputItem?.sale_price || 0);
-  const profitPerUnit = sellingPrice - costPerUnit;
+  const sellingPrice =
+    formData.selling_price !== null && formData.selling_price !== undefined
+      ? Number(formData.selling_price)
+      : 0;
+const yieldQuantity = Number(formData.yield_quantity || 0);
+const costPerUnit = yieldQuantity > 0 ? totalCost / yieldQuantity : totalCost;
+const profitPerUnit = sellingPrice - costPerUnit;
   const profitMargin = sellingPrice > 0 
     ? ((profitPerUnit / sellingPrice) * 100).toFixed(1) 
     : 0;
@@ -137,45 +199,32 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
             </div>
           </div>
           
-          {/* Output Item & Yield */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="output_item">Output Item *</Label>
-              <Select
-                value={formData.output_item_id}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, output_item_id: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select item to produce" />
-                </SelectTrigger>
-                <SelectContent>
-                  {items.map(item => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="yield_quantity">Yield Quantity *</Label>
-              <div className="relative">
-                <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input
-                  id="yield_quantity"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={formData.yield_quantity}
-                  onChange={(e) => setFormData(prev => ({ ...prev, yield_quantity: parseFloat(e.target.value) || 1 }))}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
-          </div>
           
+          {/* Yield */}
+          <div className="space-y-2">
+            <Label htmlFor="yield_quantity">Items Produced per Batch *</Label>
+            <Input
+              id="yield_quantity"
+              type="number"
+              min="1"
+              step="1"
+              onFocus={(e) => e.target.select()}
+              value={formData.yield_quantity}
+              onChange={(e) => {
+                const value = e.target.value;
+                setFormData(prev => ({
+                  ...prev,
+                  yield_quantity: value === "" ? "" : Number(value)
+                }));
+              }}
+              required
+            />
+            <p className="text-xs text-slate-500">
+              Number of finished items produced by one batch.
+              Changing this does not change ingredient quantities.
+            </p>
+          </div>
+
           {/* Selling Price Override */}
           <div className="space-y-2">
             <Label htmlFor="selling_price">Selling Price (Override)</Label>
@@ -185,6 +234,7 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
                 id="selling_price"
                 type="number"
                 min="0"
+onFocus={(e) => e.target.select()}
                 step="0.01"
                 value={formData.selling_price === null ? "" : formData.selling_price}
                 onChange={(e) => setFormData(prev => ({ 
@@ -192,11 +242,13 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
                   selling_price: e.target.value === "" ? null : parseFloat(e.target.value) || 0 
                 }))}
                 className="pl-7"
-                placeholder={outputItem ? `Default: $${(outputItem.sale_price || 0).toFixed(2)}` : "Enter price"}
+
+
+placeholder="Enter selling price"
               />
             </div>
             <p className="text-xs text-slate-500">
-              Leave empty to use the output item's default selling price
+Optional selling price for this recipe
             </p>
           </div>
           
@@ -209,6 +261,7 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
                 id="prep_time"
                 type="number"
                 min="0"
+onFocus={(e) => e.target.select()}
                 value={formData.prep_time_minutes}
                 onChange={(e) => setFormData(prev => ({ ...prev, prep_time_minutes: parseFloat(e.target.value) || 0 }))}
                 className="pl-10"
@@ -235,9 +288,9 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
                 </Card>
               ) : (
                 formData.ingredients.map((ing, index) => {
-                  const selectedItem = items.find(i => i.id === ing.item_id);
-                  const ingCost = (selectedItem?.unit_cost || 0) * (ing.quantity || 0);
-                  
+const selectedItem = items.find(i => i.id === ing.item_id);
+const recipeUnitCost = getRecipeUnitCost(selectedItem);
+const ingCost = recipeUnitCost * (ing.quantity || 0);                  
                   return (
                     <Card key={index} className="p-3">
                       <div className="flex items-start gap-3">
@@ -252,7 +305,7 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
                             <SelectContent>
                               {items.map(item => (
                                 <SelectItem key={item.id} value={item.id}>
-                                  {item.name} (${(item.unit_cost || 0).toFixed(2)}/{item.unit || 'unit'})
+{item.name} (${getRecipeUnitCost(item).toFixed(4)}/{item.uom || item.unit || 'unit'})
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -262,6 +315,7 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
                             <Input
                               type="number"
                               min="0.01"
+onFocus={(e) => e.target.select()}
                               step="0.01"
                               value={ing.quantity}
                               onChange={(e) => updateIngredient(index, 'quantity', parseFloat(e.target.value) || 0)}
@@ -269,7 +323,7 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
                             />
                             {selectedItem && (
                               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
-                                {selectedItem.unit || 'units'}
+{selectedItem.uom || selectedItem.unit || 'units'}
                               </span>
                             )}
                           </div>
@@ -310,6 +364,7 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
                     id="labor_cost"
                     type="number"
                     min="0"
+onFocus={(e) => e.target.select()}
                     step="0.01"
                     value={formData.labor_cost}
                     onChange={(e) => setFormData(prev => ({ ...prev, labor_cost: parseFloat(e.target.value) || 0 }))}
@@ -327,6 +382,7 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
                     id="overhead_cost"
                     type="number"
                     min="0"
+onFocus={(e) => e.target.select()}
                     step="0.01"
                     value={formData.overhead_cost}
                     onChange={(e) => setFormData(prev => ({ ...prev, overhead_cost: parseFloat(e.target.value) || 0 }))}
@@ -344,53 +400,63 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
               <DollarSign className="h-5 w-5 text-indigo-600" />
               Cost Summary
             </h3>
-            
+
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-slate-600">Ingredients</span>
                 <span className="font-medium">${ingredientCost.toFixed(2)}</span>
               </div>
+
               <div className="flex justify-between">
                 <span className="text-slate-600">Labor</span>
-                <span className="font-medium">${(formData.labor_cost || 0).toFixed(2)}</span>
+                <span className="font-medium">${Number(formData.labor_cost || 0).toFixed(2)}</span>
               </div>
+
               <div className="flex justify-between">
                 <span className="text-slate-600">Overhead</span>
-                <span className="font-medium">${(formData.overhead_cost || 0).toFixed(2)}</span>
+                <span className="font-medium">${Number(formData.overhead_cost || 0).toFixed(2)}</span>
               </div>
-              <div className="pt-2 border-t border-indigo-200">
+
+              <div className="pt-2 border-t border-indigo-200 space-y-2">
                 <div className="flex justify-between">
-                  <span className="font-semibold text-slate-900">Total Cost</span>
+                  <span className="font-semibold text-slate-900">Total Batch Cost</span>
                   <span className="font-bold text-slate-900">${totalCost.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between mt-1">
-                  <span className="font-semibold text-slate-900">Cost per Unit</span>
-                  <span className="font-bold text-indigo-600">${costPerUnit.toFixed(2)}</span>
+
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Items Produced per Batch</span>
+                  <span className="font-medium">{formData.yield_quantity || 0}</span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-900">Cost per Item</span>
+                  <span className="font-bold text-slate-900">${costPerUnit.toFixed(2)}</span>
                 </div>
               </div>
-              
+
               {sellingPrice > 0 && (
-                <div className="pt-2 border-t border-indigo-200">
+                <div className="pt-2 border-t border-indigo-200 space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Selling Price</span>
-                    <span className="font-medium">
-                      ${sellingPrice.toFixed(2)}
-                      {formData.selling_price !== null && formData.selling_price !== undefined && (
-                        <span className="text-xs text-indigo-600 ml-1">(custom)</span>
-                      )}
+                    <span className="text-slate-600">Selling Price per Item</span>
+                    <span className="font-medium">${sellingPrice.toFixed(2)}</span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-emerald-700">Profit per Item</span>
+                    <span className={`font-bold ${profitPerUnit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      ${profitPerUnit.toFixed(2)}
                     </span>
                   </div>
+
                   <div className="flex justify-between">
-                    <span className="font-semibold text-emerald-700">Profit per Unit</span>
-                    <span className={`font-bold ${profitPerUnit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      ${profitPerUnit.toFixed(2)} ({profitMargin}%)
-                    </span>
+                    <span className="text-slate-600">Profit Margin</span>
+                    <span className="font-medium">{profitMargin}%</span>
                   </div>
                 </div>
               )}
             </div>
           </div>
-          
+
           {/* Instructions */}
           <div className="space-y-2">
             <Label htmlFor="instructions">Instructions</Label>
@@ -409,7 +475,7 @@ export default function RecipeForm({ open, onClose, recipe, items, onSave }) {
             </Button>
             <Button 
               type="submit" 
-              disabled={saving || !formData.name || !formData.output_item_id} 
+              disabled={saving || !formData.name || Number(formData.yield_quantity) <= 0} 
               className="bg-indigo-600 hover:bg-indigo-700"
             >
               {saving ? (

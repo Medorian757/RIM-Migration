@@ -4,22 +4,95 @@ import { Button } from "@/components/ui/button";
 import { ChefHat, Edit2, Trash2, Clock, DollarSign, Package, TrendingUp } from "lucide-react";
 
 export default function RecipeCard({ recipe, items, onEdit, onDelete }) {
-  const outputItem = items.find(i => i.id === recipe.output_item_id);
   
   // Calculate total ingredient cost
-  const ingredientCost = (recipe.ingredients || []).reduce((sum, ing) => {
-    const item = items.find(i => i.id === ing.item_id);
-    return sum + ((item?.unit_cost || 0) * (ing.quantity || 0));
-  }, 0);
-  
-  const laborCost = recipe.labor_cost || 0;
-  const overheadCost = recipe.overhead_cost || 0;
+// Calculate total ingredient cost using Recipe UOM costing
+const getRecipeUnitCost = (item) => {
+  if (!item) return 0;
+
+  const purchaseCost = Number(item.purchase_cost || 0);
+  const unitsPerCase = Number(item.units_per_case || 0);
+  const stockUnit = item.unit;
+  const recipeUom = item.uom;
+
+if (purchaseCost <= 0 || unitsPerCase <= 0) {
+  return Number(item.unit_cost || 0);
+}
+  const normalizeUnit = (unit) => {
+    const map = {
+      gallons: "gal",
+      gallon: "gal",
+      liters: "l",
+      liter: "l",
+      cups: "cup",
+      lbs: "lb",
+      pounds: "lb",
+      pound: "lb",
+      pieces: "each",
+    };
+
+    return map[unit] || unit;
+  };
+
+  const from = normalizeUnit(stockUnit);
+  const to = normalizeUnit(recipeUom);
+
+  const conversions = {
+    // Weight — base unit: oz
+    oz: { group: "weight", factor: 1 },
+    lb: { group: "weight", factor: 16 },
+    g: { group: "weight", factor: 0.0352739619 },
+    kg: { group: "weight", factor: 35.2739619 },
+
+    // Volume — base unit: fl oz
+    "fl oz": { group: "volume", factor: 1 },
+    gal: { group: "volume", factor: 128 },
+    cup: { group: "volume", factor: 8 },
+    tbsp: { group: "volume", factor: 0.5 },
+    tsp: { group: "volume", factor: 1 / 6 },
+    ml: { group: "volume", factor: 0.0338140227 },
+    l: { group: "volume", factor: 33.8140227 },
+
+    // Count
+    each: { group: "count", factor: 1 },
+  };
+
+if (!conversions[from] || !conversions[to]) {
+  return Number(item.unit_cost || 0);
+}
+
+if (conversions[from].group !== conversions[to].group) {
+  return Number(item.unit_cost || 0);
+}
+  const recipeQuantity =
+    unitsPerCase *
+    conversions[from].factor /
+    conversions[to].factor;
+
+  return recipeQuantity > 0
+    ? purchaseCost / recipeQuantity
+    : 0;
+};
+
+const ingredientCost = (recipe.ingredients || []).reduce((sum, ing) => {
+  const item = items.find(i => i.id === ing.item_id);
+  const unitCost = getRecipeUnitCost(item);
+
+  return sum + unitCost * Number(ing.quantity || 0);
+}, 0);  
+  const laborCost = Number(recipe.labor_cost || 0);
+  const overheadCost = Number(recipe.overhead_cost || 0);
   const totalCost = ingredientCost + laborCost + overheadCost;
-  const costPerUnit = recipe.yield_quantity > 0 ? totalCost / recipe.yield_quantity : 0;
-  
-  const sellingPrice = recipe.selling_price !== undefined && recipe.selling_price !== null 
-    ? recipe.selling_price 
-    : (outputItem?.sale_price || 0);
+
+  const itemsPerBatch = Number(recipe.yield_quantity || 0);
+  const costPerUnit = itemsPerBatch > 0
+    ? totalCost / itemsPerBatch
+    : 0;
+
+  const sellingPrice =
+    recipe.selling_price !== undefined && recipe.selling_price !== null
+      ? Number(recipe.selling_price)
+      : 0;
   const profitPerUnit = sellingPrice - costPerUnit;
   const profitMargin = sellingPrice > 0 ? ((profitPerUnit / sellingPrice) * 100).toFixed(1) : 0;
   
@@ -33,14 +106,6 @@ export default function RecipeCard({ recipe, items, onEdit, onDelete }) {
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-slate-900 truncate">{recipe.name}</h3>
-              {outputItem && (
-                <div className="flex items-center gap-2 mt-1">
-                  <Package className="h-3 w-3 text-slate-400" />
-                  <p className="text-sm text-slate-500">
-                    Makes {recipe.yield_quantity} {outputItem.unit || 'units'} of {outputItem.name}
-                  </p>
-                </div>
-              )}
               {recipe.prep_time_minutes && (
                 <div className="flex items-center gap-1 mt-1">
                   <Clock className="h-3 w-3 text-slate-400" />
@@ -100,9 +165,19 @@ export default function RecipeCard({ recipe, items, onEdit, onDelete }) {
               <span className="font-medium text-slate-900">${overheadCost.toFixed(2)}</span>
             </div>
           )}
-          <div className="pt-2 border-t border-slate-200">
+          <div className="pt-2 border-t border-slate-200 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-700">Cost per Unit</span>
+              <span className="text-sm font-medium text-slate-700">Total Batch Cost</span>
+              <span className="font-semibold text-slate-900">${totalCost.toFixed(2)}</span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-600">Items Produced per Batch</span>
+              <span className="font-medium text-slate-900">{itemsPerBatch}</span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">Cost per Item</span>
               <span className="text-lg font-bold text-slate-900">${costPerUnit.toFixed(2)}</span>
             </div>
           </div>
@@ -115,7 +190,7 @@ export default function RecipeCard({ recipe, items, onEdit, onDelete }) {
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-emerald-600" />
                 <span className="text-sm font-medium text-emerald-900">
-                  ${profitPerUnit.toFixed(2)} profit/unit
+                  ${profitPerUnit.toFixed(2)} profit/item
                 </span>
               </div>
               <Badge className={`${
